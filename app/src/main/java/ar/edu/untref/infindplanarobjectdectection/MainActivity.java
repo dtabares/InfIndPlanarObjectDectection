@@ -14,21 +14,14 @@ import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.JavaCameraView;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
-import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
-import org.opencv.core.MatOfInt;
 import org.opencv.core.MatOfPoint;
-import org.opencv.core.MatOfPoint2f;
 import org.opencv.core.Point;
-import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.imgproc.Imgproc;
-
 import java.util.ArrayList;
 import java.util.List;
-
-import static org.opencv.imgproc.Imgproc.CV_HOUGH_STANDARD;
 
 public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2 {
 
@@ -36,7 +29,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     private int MY_PERMISSIONS_REQUEST_CAMERA;
     JavaCameraView javaCameraView;
     Mat mRgba;
-    Mat lines;
+    Mat result;
     BaseLoaderCallback baseLoaderCallback = new BaseLoaderCallback(this){
         @Override
         public void onManagerConnected(int status){
@@ -152,16 +145,168 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         return corners;
     }
 
+    private boolean isSamePoint(Point a, Point b){
+        double delta = 1;
+
+        double difX = Math.abs(a.x - b.x);
+        double difY = Math.abs(a.y - b.y);
+
+        if(difX <= delta && difY <= delta){
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+
+    private List<Point> refineCorners(List<Point> corners){
+        List<Point> refinedCorners = new ArrayList<>();
+
+        for (int i=0; i< corners.size(); i++){
+            for (int j=i+1; j<corners.size();j++){
+                if(isSamePoint(corners.get(i),corners.get(j))){
+                    if(refinedCorners.contains(corners.get(i))){
+                        refinedCorners.remove(corners.get(i));
+                    }
+                    refinedCorners.add(corners.get(j));
+                }
+            }
+        }
+
+        return refinedCorners;
+    }
+
+    private List<double[]> getLinesContainingPoint(Point p, Mat lineMatrix){
+        List<double[]> lineList = new ArrayList<>();
+        //recorrer todas las lineas, y ver si el punto pertenece, si pertene lo agregamos a la lista
+        for (int i = 0; i < lineMatrix.rows(); i++) {
+            double[] line = lineMatrix.get(i, 0);
+            double x1 = line[0];
+            double y1 = line[1];
+            double x2 = line[2];
+            double y2 = line[3];
+            double x = p.x;
+            double y = p.y;
+            //Si son iguales el punto pertence a la recta
+            if(((y - y1)/(x-x1)) == (y2-y1)/(x2-x1)){
+                lineList.add(line);
+            }
+        }
+
+        //devolvemos la lista
+        return lineList;
+    }
+
+
+    private List<double[]> getVerticalLines(Mat lineMatrix){
+        List<double[]> verticalLineList = new ArrayList<>();
+        double delta = 10;
+        for (int i = 0; i < lineMatrix.rows(); i++) {
+            double[] line = lineMatrix.get(i, 0);
+            double x1 = line[0];
+            double y1 = line[1];
+            double x2 = line[2];
+            double y2 = line[3];
+            double angle = Math.atan2(y2 - y1, x2 - x1) * 180.0 / Math.PI;
+            if(Math.abs(angle - 90) < delta){
+                verticalLineList.add(line);
+            }
+        }
+        return verticalLineList;
+    }
+
+    private List<double[]> getHorizontalLines(Mat lineMatrix){
+        List<double[]> horizontalLineList = new ArrayList<>();
+        double delta = 5;
+        for (int i = 0; i < lineMatrix.rows(); i++) {
+            double[] line = lineMatrix.get(i, 0);
+            double x1 = line[0];
+            double y1 = line[1];
+            double x2 = line[2];
+            double y2 = line[3];
+            double angle = Math.atan2(y2 - y1, x2 - x1) * 180.0 / Math.PI;
+
+            if(Math.abs(angle) < delta){
+                horizontalLineList.add(line);
+            }
+        }
+        return horizontalLineList;
+    }
+
+    private Point getLineMiddlePoint(double[] line){
+        Point middlePoint = new Point();
+        double x1 = line[0];
+        double y1 = line[1];
+        double x2 = line[2];
+        double y2 = line[3];
+        middlePoint.x  = (x1 + x2) / 2;
+        middlePoint.y = (y1 + y2) / 2;
+
+        return middlePoint;
+    }
+
+
+    private void drawLines(Mat lines, Scalar color){
+        for (int i = 0; i < lines.rows(); i++) {
+            double[] val = lines.get(i, 0);
+            Imgproc.line(result, new Point(val[0], val[1]), new Point(val[2], val[3]), color, 4);
+        }
+    }
+
+
+    private void drawLines(List<double[]> lineList, Scalar color){
+        for (int i = 0; i < lineList.size(); i++) {
+            double[] val = lineList.get(i);
+            Imgproc.line(result, new Point(val[0], val[1]), new Point(val[2], val[3]), color, 4);
+        }
+    }
+
+    private void drawLine(double[] line, Scalar color){
+            Imgproc.line(result, new Point(line[0], line[1]), new Point(line[2], line[3]), color, 4);
+    }
+
+
+    private void drawCircles(List<Point> points, Scalar color){
+        for (int i =0; i<points.size(); i++){
+            Imgproc.circle(result,points.get(i),3,color,2);
+        }
+    }
+
+    private void drawCircle(Point point, Scalar color){
+        Imgproc.circle(result,point,3,color,2);
+    }
+
+
+
+    private List<Plane> calculatePlanes(List<double[]> horizontalLineList, List<double[]> verticalLineList){
+        List<Plane> planeList = new ArrayList<>();
+
+        for(int i=0; i<horizontalLineList.size(); i++){
+            for (int j = 0; j<verticalLineList.size(); j++){
+                Point intersectPoint  = computeIntersect(horizontalLineList.get(i),verticalLineList.get(j));
+
+                if(intersectPoint.x > 0 && intersectPoint.y > 0){
+                    planeList.add(new Plane(horizontalLineList.get(i),verticalLineList.get(j),intersectPoint));
+                    break;
+                }
+            }
+        }
+        return planeList;
+    }
+
+
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
+        List<double[]> horizontalLineList = new ArrayList<>();
+        List<double[]> verticalLineList = new ArrayList<>();
         mRgba = inputFrame.rgba();
-        Mat result = mRgba.clone();
+        result = mRgba.clone();
         int threshold = 140;
-        int minLineSize = 100;
+        int minLineSize = 300;
         int lineGap = 50;
         //double rho = CV_HOUGH_STANDARD;
         double rho = 1;
-        lines = new Mat();
+        Mat lines = new Mat();
         //la transformo a escala de grises
         Imgproc.cvtColor(mRgba, mRgba, Imgproc.COLOR_RGB2GRAY);
         //Aplico medianBlur para remover el ruido de la imagen
@@ -170,44 +315,68 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         //Canny(Mat image, Mat edges, double threshold1, double threshold2, int apertureSize, boolean L2gradient)
         //Imgproc.Canny(mRgba, edges, 300, 600, 5, true);
         Imgproc.Canny(mRgba, edges, 50, 150, 3, true);
+        //A partir de este punto, mRgba no se usa mas, libero memoria
+        mRgba.release();
         //Imgproc.HoughLinesP(mRgba,lines,CV_HOUGH_STANDARD,Math.PI/180, 7);
         Imgproc.HoughLinesP(edges, lines, rho, Math.PI/180, threshold, minLineSize, lineGap);
-       // Log.d(TAG, "Lines Rows: " + lines.rows());
-        //Log.d(TAG, "Lines Cols: " + lines.cols());
-        if(lines.rows() > 0){
-
-
-            //Imprimo las lineas
-            for (int i = 0; i < lines.rows(); i++) {
-                double[] val = lines.get(i, 0);
-                //Imgproc.line(mRgba, new Point(val[0], val[1]), new Point(val[2], val[3]), new Scalar(0, 255, 0), 4);
-                Imgproc.line(result, new Point(val[0], val[1]), new Point(val[2], val[3]), new Scalar(0, 255, 0), 4);
-            }
-            //Calculo las intersecciones
-            List<Point> corners = getCorners(lines);
-
-            //Dibujo las intersecciones
-            Log.d(TAG, "Corners #: " + corners.size());
-            for (int i =0; i<corners.size(); i++){
-                Imgproc.circle(result,corners.get(i),3,new Scalar(0,0,255),2);
-            }
-
-            MatOfPoint2f corners_mat = new MatOfPoint2f();
-            MatOfPoint2f diego = new MatOfPoint2f();
-            corners_mat.fromList(corners);
-
-            if (corners.size() > 0 ){
-                //approxPolyDP(MatOfPoint2f curve, MatOfPoint2f approxCurve, double epsilon, boolean closed)
-                Imgproc.approxPolyDP(corners_mat, diego, Imgproc.arcLength(corners_mat, true) * 0.02, true);
-
-                Log.d(TAG, "diego rows #: " + diego.rows());
-                Log.d(TAG, "diego cols #: " + diego.cols());
-            }
-
-        }
+        //A partir de este punto, edges no se usa mas, libero memoria
         edges.release();
+
+        //Evito que explote si no tenemos ni una sola linea
+        if(lines.rows() > 0){
+            //Obtengo las lineas horizontales
+            horizontalLineList = getHorizontalLines(lines);
+            //Obtengo las lineas verticales
+            verticalLineList = getVerticalLines(lines);
+            Log.d(TAG, "Lineas Horizontales #: " + horizontalLineList.size());
+            Log.d(TAG, "Lineas Verticales #: " + verticalLineList.size());
+
+            //drawLines(horizontalLineList, new Scalar(0, 255, 0));
+            //drawLines(verticalLineList, new Scalar(255, 0, 0));
+
+
+            //Veo si entre las lineas horizontales y verticales tengo planos
+            List<Plane> planeList = calculatePlanes(horizontalLineList,verticalLineList);
+            Log.d(TAG, "Planos #: " + planeList.size());
+
+
+
+
+            for (int i=0; i<planeList.size(); i++){
+
+                //Imprimo las lineas que componen los planos y su punto de interseccion
+                drawCircle(planeList.get(i).getIntersectPoint(), new Scalar(0,0,255));
+                drawLine(planeList.get(i).getHorizontalLine(),new Scalar(0, 255, 0));
+                drawLine(planeList.get(i).getVerticalLine(),new Scalar(255, 0, 0));
+
+
+                //Creo un poligono con 3 puntos
+                //Pto 1 = Pto de interseccion
+                //Pto 2 = Mitad de la linea Horizontal
+                //Pto 3 = Mitad de la linea Vertical
+
+                //Creo una lista para guardar los vertices del triangulo (poligono)
+                List<Point> listOfPoints = new ArrayList<>();
+
+                listOfPoints.add(planeList.get(i).getIntersectPoint());
+                listOfPoints.add(getLineMiddlePoint(planeList.get(i).getHorizontalLine()));
+                listOfPoints.add(getLineMiddlePoint(planeList.get(i).getVerticalLine()));
+
+                //Creo esta matriz de puntos a partir de la lista de puntos porque el metodo fillPoly que se usa para dibujar
+                //El triangulo lo necesita en ese formato
+                MatOfPoint matOfPoints = new MatOfPoint();
+                matOfPoints.fromList(listOfPoints);
+                List<MatOfPoint> matOfPointList = new ArrayList<>();
+                matOfPointList.add(matOfPoints);
+
+
+                //Dibujo el Poligono (triangulo)
+                //fillPoly(Mat img, java.util.List<MatOfPoint> pts,Scalar)
+                Imgproc.fillPoly(result,matOfPointList,new Scalar(255,0,255));
+
+            }
+        }
         lines.release();
-        mRgba.release();
         return result;
     }
 }
