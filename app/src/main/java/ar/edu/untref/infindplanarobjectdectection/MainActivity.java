@@ -29,6 +29,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     JavaCameraView javaCameraView;
     Mat mRgba;
     Mat result;
+    Scalar[] triangleColours;
     BaseLoaderCallback baseLoaderCallback = new BaseLoaderCallback(this){
         @Override
         public void onManagerConnected(int status){
@@ -72,6 +73,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         javaCameraView.setVisibility(SurfaceView.VISIBLE);
         javaCameraView.setCvCameraViewListener(this);
         javaCameraView.enableFpsMeter();
+        triangleColours = new Scalar[3];
+        triangleColours[0] = new Scalar(255,0,255); //violeta
+        triangleColours[1] = new Scalar(153, 255, 102); //verde claro
+        triangleColours[2] = new Scalar(102, 102, 255); //azul claro
     }
 
     @Override
@@ -288,6 +293,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
                 if(intersectPoint.x > 0 && intersectPoint.y > 0){
                     planeList.add(new Plane(horizontalLineList.get(i),verticalLineList.get(j),intersectPoint));
+                    //Remuevo la linea vertical de la lista para que otra horizontal que la cruce no se cuente como plano
+                    //Es para intentar evitar falsos positivos
+                    verticalLineList.remove(j);
                     break;
                 }
             }
@@ -338,6 +346,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
             //Veo si entre las lineas horizontales y verticales tengo planos
             List<Plane> planeList = calculatePlanes(horizontalLineList,verticalLineList);
+            int amountOfPlanes = planeList.size();
             Log.d(TAG, "Planos #: " + planeList.size());
 
 
@@ -373,7 +382,12 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
                 //Dibujo el Poligono (triangulo)
                 //fillPoly(Mat img, java.util.List<MatOfPoint> pts,Scalar)
-                Imgproc.fillPoly(result,matOfPointList,new Scalar(255,0,255));
+                Imgproc.fillPoly(result,matOfPointList,triangleColours[i]);
+
+                //Por enunciado, solo dibujo hasta 3
+                if(i > 2){
+                    break;
+                }
 
             }
         }
