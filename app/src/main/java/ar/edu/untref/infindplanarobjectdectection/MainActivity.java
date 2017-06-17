@@ -26,6 +26,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     private static final String TAG="MainActivity";
     private int MY_PERMISSIONS_REQUEST_CAMERA;
+    int frameNumber;
+    List<double[]> horizontalLineList;
+    List<double[]> verticalLineList;
     JavaCameraView javaCameraView;
     Mat mRgba;
     Mat result;
@@ -77,6 +80,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         triangleColours[0] = new Scalar(255,0,255); //violeta
         triangleColours[1] = new Scalar(153, 255, 102); //verde claro
         triangleColours[2] = new Scalar(102, 102, 255); //azul claro
+        frameNumber = 0;
+        horizontalLineList = new ArrayList<>();
+        verticalLineList = new ArrayList<>();
     }
 
     @Override
@@ -204,8 +210,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     }
 
 
-    private List<double[]> getVerticalLines(Mat lineMatrix){
-        List<double[]> verticalLineList = new ArrayList<>();
+    private void separateHorizontalAndVerticalLines(Mat lineMatrix){
         double delta = 10;
         for (int i = 0; i < lineMatrix.rows(); i++) {
             double[] line = lineMatrix.get(i, 0);
@@ -214,29 +219,18 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             double x2 = line[2];
             double y2 = line[3];
             double angle = Math.atan2(y2 - y1, x2 - x1) * 180.0 / Math.PI;
-            if(Math.abs(angle - 90) < delta){
+
+            Log.d(TAG, "Lineas - Angulo : " + angle);
+
+            if(Math.abs(Math.abs(angle) - 90) < delta){
                 verticalLineList.add(line);
             }
-        }
-        return verticalLineList;
-    }
-
-    private List<double[]> getHorizontalLines(Mat lineMatrix){
-        List<double[]> horizontalLineList = new ArrayList<>();
-        double delta = 5;
-        for (int i = 0; i < lineMatrix.rows(); i++) {
-            double[] line = lineMatrix.get(i, 0);
-            double x1 = line[0];
-            double y1 = line[1];
-            double x2 = line[2];
-            double y2 = line[3];
-            double angle = Math.atan2(y2 - y1, x2 - x1) * 180.0 / Math.PI;
 
             if(Math.abs(angle) < delta){
                 horizontalLineList.add(line);
             }
         }
-        return horizontalLineList;
+
     }
 
     private Point getLineMiddlePoint(double[] line){
@@ -306,92 +300,96 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
-        List<double[]> horizontalLineList = new ArrayList<>();
-        List<double[]> verticalLineList = new ArrayList<>();
-        mRgba = inputFrame.rgba();
-        result = mRgba.clone();
-        int threshold = 140;
-        int minLineSize = 300;
-        int lineGap = 50;
-        //double rho = CV_HOUGH_STANDARD;
-        double rho = 1;
-        Mat lines = new Mat();
-        //la transformo a escala de grises
-        Imgproc.cvtColor(mRgba, mRgba, Imgproc.COLOR_RGB2GRAY);
-        //Aplico medianBlur para remover el ruido de la imagen
-        Imgproc.medianBlur(mRgba, mRgba, 5);
-        Mat edges = new Mat();
-        //Canny(Mat image, Mat edges, double threshold1, double threshold2, int apertureSize, boolean L2gradient)
-        //Imgproc.Canny(mRgba, edges, 300, 600, 5, true);
-        Imgproc.Canny(mRgba, edges, 50, 150, 3, true);
-        //A partir de este punto, mRgba no se usa mas, libero memoria
-        mRgba.release();
-        //Imgproc.HoughLinesP(mRgba,lines,CV_HOUGH_STANDARD,Math.PI/180, 7);
-        Imgproc.HoughLinesP(edges, lines, rho, Math.PI/180, threshold, minLineSize, lineGap);
-        //A partir de este punto, edges no se usa mas, libero memoria
-        edges.release();
+        if (frameNumber == 0){
+            mRgba = inputFrame.rgba();
+            result = mRgba.clone();
+            int threshold = 80;
+            int minLineSize = 250;
+            int lineGap = 50;
+            //double rho = CV_HOUGH_STANDARD;
+            double rho = 1;
+            Mat lines = new Mat();
+            //la transformo a escala de grises
+            Imgproc.cvtColor(mRgba, mRgba, Imgproc.COLOR_RGB2GRAY);
+            //Aplico medianBlur para remover el ruido de la imagen
+            Imgproc.medianBlur(mRgba, mRgba, 5);
+            Mat edges = new Mat();
+            //Canny(Mat image, Mat edges, double threshold1, double threshold2, int apertureSize, boolean L2gradient)
+            //Imgproc.Canny(mRgba, edges, 300, 600, 5, true);
+            Imgproc.Canny(mRgba, edges, 100, 300, 3, true);
+            //A partir de este punto, mRgba no se usa mas, libero memoria
+            //mRgba.release();
+            //Imgproc.HoughLinesP(mRgba,lines,CV_HOUGH_STANDARD,Math.PI/180, 7);
+            Imgproc.HoughLinesP(edges, lines, rho, Math.PI/180, threshold, minLineSize, lineGap);
+            //A partir de este punto, edges no se usa mas, libero memoria
+            //edges.release();
 
-        //Evito que explote si no tenemos ni una sola linea
-        if(lines.rows() > 0){
-            //Obtengo las lineas horizontales
-            horizontalLineList = getHorizontalLines(lines);
-            //Obtengo las lineas verticales
-            verticalLineList = getVerticalLines(lines);
-            Log.d(TAG, "Lineas Horizontales #: " + horizontalLineList.size());
-            Log.d(TAG, "Lineas Verticales #: " + verticalLineList.size());
-
-            //drawLines(horizontalLineList, new Scalar(0, 255, 0));
-            //drawLines(verticalLineList, new Scalar(255, 0, 0));
+            //Evito que explote si no tenemos ni una sola linea
+            if(lines.rows() > 0){
+                drawLines(lines,new Scalar(0, 255, 153));
+                //Separo las lineas horizontales y verticales
+                verticalLineList.clear();
+                horizontalLineList.clear();
+                separateHorizontalAndVerticalLines(lines);
+                Log.d(TAG, "Lineas Horizontales #: " + horizontalLineList.size());
+                Log.d(TAG, "Lineas Verticales #: " + verticalLineList.size());
 
 
-            //Veo si entre las lineas horizontales y verticales tengo planos
-            List<Plane> planeList = calculatePlanes(horizontalLineList,verticalLineList);
-            int amountOfPlanes = planeList.size();
-            Log.d(TAG, "Planos #: " + planeList.size());
+                //Veo si entre las lineas horizontales y verticales tengo planos
+                List<Plane> planeList = calculatePlanes(horizontalLineList,verticalLineList);
+                int amountOfPlanes = planeList.size();
+                Log.d(TAG, "Planos #: " + planeList.size());
 
 
 
 
-            for (int i=0; i<planeList.size(); i++){
+                for (int i=0; i<planeList.size(); i++){
 
-                //Imprimo las lineas que componen los planos y su punto de interseccion
-                drawCircle(planeList.get(i).getIntersectPoint(), new Scalar(0,0,255));
-                drawLine(planeList.get(i).getHorizontalLine(),new Scalar(0, 255, 0));
-                drawLine(planeList.get(i).getVerticalLine(),new Scalar(255, 0, 0));
-
-
-                //Creo un poligono con 3 puntos
-                //Pto 1 = Pto de interseccion
-                //Pto 2 = Mitad de la linea Horizontal
-                //Pto 3 = Mitad de la linea Vertical
-
-                //Creo una lista para guardar los vertices del triangulo (poligono)
-                List<Point> listOfPoints = new ArrayList<>();
-
-                listOfPoints.add(planeList.get(i).getIntersectPoint());
-                listOfPoints.add(getLineMiddlePoint(planeList.get(i).getHorizontalLine()));
-                listOfPoints.add(getLineMiddlePoint(planeList.get(i).getVerticalLine()));
-
-                //Creo esta matriz de puntos a partir de la lista de puntos porque el metodo fillPoly que se usa para dibujar
-                //El triangulo lo necesita en ese formato
-                MatOfPoint matOfPoints = new MatOfPoint();
-                matOfPoints.fromList(listOfPoints);
-                List<MatOfPoint> matOfPointList = new ArrayList<>();
-                matOfPointList.add(matOfPoints);
+                    //Imprimo las lineas que componen los planos y su punto de interseccion
+                    drawCircle(planeList.get(i).getIntersectPoint(), new Scalar(0,0,255));
+                    drawLine(planeList.get(i).getHorizontalLine(),new Scalar(0, 255, 0));
+                    drawLine(planeList.get(i).getVerticalLine(),new Scalar(255, 0, 0));
 
 
-                //Dibujo el Poligono (triangulo)
-                //fillPoly(Mat img, java.util.List<MatOfPoint> pts,Scalar)
-                Imgproc.fillPoly(result,matOfPointList,triangleColours[i]);
+                    //Creo un poligono con 3 puntos
+                    //Pto 1 = Pto de interseccion
+                    //Pto 2 = Mitad de la linea Horizontal
+                    //Pto 3 = Mitad de la linea Vertical
 
-                //Por enunciado, solo dibujo hasta 3
-                if(i > 2){
+                    //Creo una lista para guardar los vertices del triangulo (poligono)
+                    List<Point> listOfPoints = new ArrayList<>();
+
+                    listOfPoints.add(planeList.get(i).getIntersectPoint());
+                    listOfPoints.add(getLineMiddlePoint(planeList.get(i).getHorizontalLine()));
+                    listOfPoints.add(getLineMiddlePoint(planeList.get(i).getVerticalLine()));
+
+                    //Creo esta matriz de puntos a partir de la lista de puntos porque el metodo fillPoly que se usa para dibujar
+                    //El triangulo lo necesita en ese formato
+                    MatOfPoint matOfPoints = new MatOfPoint();
+                    matOfPoints.fromList(listOfPoints);
+                    List<MatOfPoint> matOfPointList = new ArrayList<>();
+                    matOfPointList.add(matOfPoints);
+
+
+                    //Dibujo el Poligono (triangulo)
+                    //fillPoly(Mat img, java.util.List<MatOfPoint> pts,Scalar)
+                    Imgproc.fillPoly(result,matOfPointList,triangleColours[i]);
+
                     break;
+                    //Por enunciado, solo dibujo hasta 3
+                    /*if(i > 2){
+                        break;
+                    }
+*/
                 }
-
             }
+            lines.release();
+
         }
-        lines.release();
+        frameNumber++;
+        if(frameNumber == 10){
+            frameNumber = 0;
+        }
         return result;
     }
 }
