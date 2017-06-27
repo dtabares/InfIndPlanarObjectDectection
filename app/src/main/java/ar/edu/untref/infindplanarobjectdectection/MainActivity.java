@@ -375,12 +375,11 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                     //fillPoly(Mat img, java.util.List<MatOfPoint> pts,Scalar)
                     Imgproc.fillPoly(result,matOfPointList,triangleColours[i]);
 
-                    break;
+                    //break;
                     //Por enunciado, solo dibujo hasta 3
-                    /*if(i > 2){
+                    if(i > 2){
                         break;
                     }
-*/
                 }
             }
             lines.release();
