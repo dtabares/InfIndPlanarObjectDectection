@@ -76,10 +76,18 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         javaCameraView.setVisibility(SurfaceView.VISIBLE);
         javaCameraView.setCvCameraViewListener(this);
         javaCameraView.enableFpsMeter();
-        triangleColours = new Scalar[3];
+        triangleColours = new Scalar[10];
         triangleColours[0] = new Scalar(255,0,255); //violeta
         triangleColours[1] = new Scalar(153, 255, 102); //verde claro
         triangleColours[2] = new Scalar(102, 102, 255); //azul claro
+        triangleColours[3] = new Scalar(51, 153, 102); //otra variedad de verde
+        triangleColours[4] = new Scalar(255, 173, 51); //naranja
+        triangleColours[5] = new Scalar(204, 0, 102); //fucsia
+        triangleColours[6] = new Scalar(204, 204, 255); //gris claro
+        triangleColours[7] = new Scalar(255, 255, 102); //amarillo claro
+        triangleColours[8] = new Scalar(1255, 133, 102); //ladrillo
+        triangleColours[9] = new Scalar(0, 102, 153); //azul
+
         frameNumber = 0;
         horizontalLineList = new ArrayList<>();
         verticalLineList = new ArrayList<>();
@@ -144,19 +152,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
     }
 
-    private List<Point> getCorners(Mat lines){
-        List<Point> corners = new ArrayList<>();
-        for (int i = 0; i < lines.rows(); i++) {
-            for (int j = i+1; j < lines.rows(); j++) {
-                Point point  = computeIntersect(lines.get(i, 0),lines.get(j, 0));
-                if(point.x > 0 && point.y > 0){
-                    corners.add(point);
-                }
-            }
-        }
-        return corners;
-    }
-
     private boolean isSamePoint(Point a, Point b){
         double delta = 1;
 
@@ -170,45 +165,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             return false;
         }
     }
-
-    private List<Point> refineCorners(List<Point> corners){
-        List<Point> refinedCorners = new ArrayList<>();
-
-        for (int i=0; i< corners.size(); i++){
-            for (int j=i+1; j<corners.size();j++){
-                if(isSamePoint(corners.get(i),corners.get(j))){
-                    if(refinedCorners.contains(corners.get(i))){
-                        refinedCorners.remove(corners.get(i));
-                    }
-                    refinedCorners.add(corners.get(j));
-                }
-            }
-        }
-
-        return refinedCorners;
-    }
-
-    private List<double[]> getLinesContainingPoint(Point p, Mat lineMatrix){
-        List<double[]> lineList = new ArrayList<>();
-        //recorrer todas las lineas, y ver si el punto pertenece, si pertene lo agregamos a la lista
-        for (int i = 0; i < lineMatrix.rows(); i++) {
-            double[] line = lineMatrix.get(i, 0);
-            double x1 = line[0];
-            double y1 = line[1];
-            double x2 = line[2];
-            double y2 = line[3];
-            double x = p.x;
-            double y = p.y;
-            //Si son iguales el punto pertence a la recta
-            if(((y - y1)/(x-x1)) == (y2-y1)/(x2-x1)){
-                lineList.add(line);
-            }
-        }
-
-        //devolvemos la lista
-        return lineList;
-    }
-
 
     private void separateHorizontalAndVerticalLines(Mat lineMatrix){
         double delta = 10;
@@ -286,6 +242,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                 Point intersectPoint  = computeIntersect(horizontalLineList.get(i),verticalLineList.get(j));
 
                 if(intersectPoint.x > 0 && intersectPoint.y > 0){
+                //if(linesIntersect(horizontalLineList.get(i), verticalLineList.get(j))){
+                    //Point intersectPoint  = computeIntersect(horizontalLineList.get(i),verticalLineList.get(j));
                     planeList.add(new Plane(horizontalLineList.get(i),verticalLineList.get(j),intersectPoint));
                     //Remuevo la linea vertical de la lista para que otra horizontal que la cruce no se cuente como plano
                     //Es para intentar evitar falsos positivos
@@ -295,6 +253,120 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             }
         }
         return planeList;
+    }
+
+    private boolean isTriangleOverlappingAnotherTriangle(List<Plane> drawedPlanes, Plane planeToBeAdded){
+        boolean overlapping = false;
+        Plane plane;
+        for (int i=0; i< drawedPlanes.size(); i++) {
+            plane = drawedPlanes.get(i);
+            for (double[] planeLine : plane.getLineList()
+                    ) {
+                for (double[] planeToBeAddedLine : planeToBeAdded.getLineList()
+                        ) {
+
+                    if(linesIntersect(planeLine,planeToBeAddedLine)){
+                        Log.d(TAG, "FOUND OVERLAPPING LINES!");
+                        Log.d(TAG, "planeLine (X,Y) #1: " + planeLine[0] + " , " + planeLine[1]);
+                        Log.d(TAG, "planeLine (X,Y) #2: " + planeLine[2] + " , " + planeLine[3]);
+                        Log.d(TAG, "planeToBeAddedLine (X,Y) #1: " + planeToBeAddedLine[0] + " , " + planeToBeAddedLine[1]);
+                        Log.d(TAG, "planeToBeAddedLine (X,Y) #2: " + planeToBeAddedLine[2] + " , " + planeToBeAddedLine[3]);
+                        return true;
+
+                    }
+                }
+            }
+        }
+
+        return overlapping;
+    }
+
+    private static double area2(double x1, double y1,
+                                double x2, double y2,
+                                double x3, double y3) {
+        return (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1);
+    }
+
+    private static boolean between(double x1, double y1,
+                                   double x2, double y2,
+                                   double x3, double y3)
+    {
+        if (x1 != x2) {
+            return (x1 <= x3 && x3 <= x2) || (x1 >= x3 && x3 >= x2);
+        }
+        else {
+            return (y1 <= y3 && y3 <= y2) || (y1 >= y3 && y3 >= y2);
+        }
+    }
+
+
+    /**
+     * Test if the line segment (x1,y1)-&gt;(x2,y2) intersects the line segment
+     * (x3,y3)-&gt;(x4,y4).
+     *
+     * x1 the first x coordinate of the first segment
+     * y1 the first y coordinate of the first segment
+     * x2 the second x coordinate of the first segment
+     * y2 the second y coordinate of the first segment
+     * x3 the first x coordinate of the second segment
+     * y3 the first y coordinate of the second segment
+     * x4 the second x coordinate of the second segment
+     * y4 the second y coordinate of the second segment
+     * @return true if the segments intersect
+     */
+    public static boolean linesIntersect(double[] planeLine,double[] planeToBeAddedLine){
+        double x1,x2,x3,x4,y1,y2,y3,y4;
+        x1 = planeLine[0];
+        y1 = planeLine[1];
+        x2 = planeLine[2];
+        y2 = planeLine[3];
+
+        x3 = planeToBeAddedLine[0];
+        y3 = planeToBeAddedLine[1];
+        x4 = planeToBeAddedLine[2];
+        y4 = planeToBeAddedLine[3];
+
+        double a1, a2, a3, a4;
+
+        // deal with special cases
+        if ((a1 = area2(x1, y1, x2, y2, x3, y3)) == 0.0) {
+            // check if p3 is between p1 and p2 OR
+            // p4 is collinear also AND either between p1 and p2 OR at opposite ends
+            if (between(x1, y1, x2, y2, x3, y3)) {
+                return true;
+            } else {
+                if (area2(x1, y1, x2, y2, x4, y4) == 0.0) {
+                    return between(x3, y3, x4, y4, x1, y1)
+                            || between(x3, y3, x4, y4, x2, y2);
+                } else {
+                    return false;
+                }
+            }
+        } else if ((a2 = area2(x1, y1, x2, y2, x4, y4)) == 0.0) {
+            // check if p4 is between p1 and p2 (we already know p3 is not
+            // collinear)
+            return between(x1, y1, x2, y2, x4, y4);
+        }
+        if ((a3 = area2(x3, y3, x4, y4, x1, y1)) == 0.0) {
+            // check if p1 is between p3 and p4 OR
+            // p2 is collinear also AND either between p1 and p2 OR at opposite ends
+            if (between(x3, y3, x4, y4, x1, y1)) {
+                return true;
+            } else {
+                if (area2(x3, y3, x4, y4, x2, y2) == 0.0) {
+                    return between(x1, y1, x2, y2, x3, y3)
+                            || between(x1, y1, x2, y2, x4, y4);
+                } else {
+                    return false;
+                }
+            }
+        } else if ((a4 = area2(x3, y3, x4, y4, x2, y2)) == 0.0) {
+            // check if p2 is between p3 and p4 (we already know p1 is not
+            // collinear)
+            return between(x3, y3, x4, y4, x2, y2);
+        } else {  // test for regular intersection
+            return ((a1 > 0.0) ^ (a2 > 0.0)) && ((a3 > 0.0) ^ (a4 > 0.0));
+        }
     }
 
 
@@ -341,43 +413,51 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                 Log.d(TAG, "Planos #: " + planeList.size());
 
 
-
+                List<Plane> drawedPlanes = new ArrayList<>();
 
                 for (int i=0; i<planeList.size(); i++){
 
-                    //Imprimo las lineas que componen los planos y su punto de interseccion
-                    drawCircle(planeList.get(i).getIntersectPoint(), new Scalar(0,0,255));
-                    drawLine(planeList.get(i).getHorizontalLine(),new Scalar(0, 255, 0));
-                    drawLine(planeList.get(i).getVerticalLine(),new Scalar(255, 0, 0));
+                    if(!isTriangleOverlappingAnotherTriangle(drawedPlanes,planeList.get(i))){
+                    //if(true){
+                        //Imprimo las lineas que componen los planos y su punto de interseccion
+                        drawCircle(planeList.get(i).getIntersectPoint(), new Scalar(0,0,255));
+                        drawLine(planeList.get(i).getHorizontalLine(),new Scalar(0, 255, 0));
+                        drawLine(planeList.get(i).getVerticalLine(),new Scalar(255, 0, 0));
 
 
-                    //Creo un poligono con 3 puntos
-                    //Pto 1 = Pto de interseccion
-                    //Pto 2 = Mitad de la linea Horizontal
-                    //Pto 3 = Mitad de la linea Vertical
+                        //Creo un poligono con 3 puntos
+                        //Pto 1 = Pto de interseccion
+                        //Pto 2 = Mitad de la linea Horizontal
+                        //Pto 3 = Mitad de la linea Vertical
 
-                    //Creo una lista para guardar los vertices del triangulo (poligono)
-                    List<Point> listOfPoints = new ArrayList<>();
+                        //Creo una lista para guardar los vertices del triangulo (poligono)
+                        List<Point> listOfPoints = new ArrayList<>();
 
-                    listOfPoints.add(planeList.get(i).getIntersectPoint());
-                    listOfPoints.add(getLineMiddlePoint(planeList.get(i).getHorizontalLine()));
-                    listOfPoints.add(getLineMiddlePoint(planeList.get(i).getVerticalLine()));
+                        listOfPoints.add(planeList.get(i).getIntersectPoint());
+                        listOfPoints.add(getLineMiddlePoint(planeList.get(i).getHorizontalLine()));
+                        listOfPoints.add(getLineMiddlePoint(planeList.get(i).getVerticalLine()));
 
-                    //Creo esta matriz de puntos a partir de la lista de puntos porque el metodo fillPoly que se usa para dibujar
-                    //El triangulo lo necesita en ese formato
-                    MatOfPoint matOfPoints = new MatOfPoint();
-                    matOfPoints.fromList(listOfPoints);
-                    List<MatOfPoint> matOfPointList = new ArrayList<>();
-                    matOfPointList.add(matOfPoints);
+                        //Creo esta matriz de puntos a partir de la lista de puntos porque el metodo fillPoly que se usa para dibujar
+                        //El triangulo lo necesita en ese formato
+                        MatOfPoint matOfPoints = new MatOfPoint();
+                        matOfPoints.fromList(listOfPoints);
+                        List<MatOfPoint> matOfPointList = new ArrayList<>();
+                        matOfPointList.add(matOfPoints);
 
 
-                    //Dibujo el Poligono (triangulo)
-                    //fillPoly(Mat img, java.util.List<MatOfPoint> pts,Scalar)
-                    Imgproc.fillPoly(result,matOfPointList,triangleColours[i]);
+                        //Dibujo el Poligono (triangulo)
+                        //fillPoly(Mat img, java.util.List<MatOfPoint> pts,Scalar)
+                        Imgproc.fillPoly(result,matOfPointList,triangleColours[i]);
+
+                        drawedPlanes.add(planeList.get(i));
+
+                    }
+
 
                     //break;
                     //Por enunciado, solo dibujo hasta 3
-                    if(i > 2){
+                    Log.d(TAG, "drawedPlanes: " + drawedPlanes.size());
+                    if(drawedPlanes.size() == 3){
                         break;
                     }
                 }
@@ -386,7 +466,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         }
         frameNumber++;
-        if(frameNumber == 10){
+        if(frameNumber == 30){
             frameNumber = 0;
         }
         return result;
